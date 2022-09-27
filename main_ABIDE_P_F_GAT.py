@@ -93,7 +93,7 @@ def main():
 
     features = Reader.get_networks(subject_IDs, kind=connectivity, atlas_name=atlas)
 
-    #train/test
+    # train/test
     skf = StratifiedKFold(n_splits=10)
     cv_splits = list(skf.split(features, np.squeeze(y)))
 

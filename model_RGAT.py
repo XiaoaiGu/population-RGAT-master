@@ -13,7 +13,7 @@ class RGAT(nn.Module):
             self.conv1 = RGATConv(in_channels=in_c, out_channels=hid_c)
             self.conv2 = RGATConv(in_channels=hid_c, out_channels=out_c)
 
-        def forward(self, data, edge):  # 前向计算函数
+        def forward(self, data, edge):  # forward calculation function
             # data.x data.edge_index
             x = data.x  # [N, C]
             edge_index = data.edge_index  # [2 ,E]

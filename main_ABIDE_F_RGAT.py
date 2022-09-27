@@ -34,24 +34,20 @@ def main():
     args = parser.parse_args()
     #start_time = time.time()
     params = dict()
-    params['num_features'] = args.num_features
-    params['num_training'] = args.num_training
-    atlas = args.atlas
-    connectivity = args.connectivity
+    params['num_features'] = args.num_features  # The number of features after dimensionality reduction
+    params['num_training'] = args.num_training  # percentage used for training
+    atlas = args.atlas  # Network construction atlas (node definition)
+    connectivity = args.connectivity  #Types of connections used for network construction
     ########################################################################
-
-
     lr = 5e-4
     hid_c = 11
     n_epoch = 3500
-    seed = 20
-    x = 0.5
 
+    seed = 20
+    hx = 0.5  # threshold x for define the graph edge. >x means related
 
     #################################
     n_class = 2
-
-    #start_time = time.time()
 
     np.random.seed(seed)  # for numpy
     random.seed(seed)
@@ -62,65 +58,68 @@ def main():
     torch.backends.cudnn.enabled = False
     torch.backends.cudnn.deterministic = True
 
+    # Create graph data
+    # get class label
+    subject_IDs = Reader.get_ids() # Get a list of subject IDs
+    labels = Reader.get_subject_score(subject_IDs, score='DX_GROUP') # Get the DX_GROUP value of the subject list
 
-    subject_IDs = Reader.get_ids()
-    labels = Reader.get_subject_score(subject_IDs, score='DX_GROUP')
-
-
-    sites = Reader.get_subject_score(subject_IDs, score='SITE_ID')
+    # Get the collection site
+    sites = Reader.get_subject_score(subject_IDs, score='SITE_ID') # Get the SITE_ID value of the subject list
     unique = np.unique(list(sites.values())).tolist()
 
+    # Initialize variables for class labels and collection sites
     num_classes = n_class
     num_nodes = len(subject_IDs)
     y_data = np.zeros([num_nodes, num_classes])
-    y = np.zeros([num_nodes, 1])
+    y = np.zeros([num_nodes, 1])  # initialize the label
     site = np.zeros([num_nodes, 1], dtype=np.int)
 
-
+    # Get class labels and get sites for all subjects
     for i in range(num_nodes):
         y_data[i, int(labels[subject_IDs[i]]) - 1] = 1
-        y[i] = int(labels[subject_IDs[i]])
-        site[i] = unique.index(sites[subject_IDs[i]])
+        y[i] = int(labels[subject_IDs[i]]) # Labels for all subjects
+        site[i] = unique.index(sites[subject_IDs[i]]) # Sites for all subjects
 
-
+    # Calculate fMRI feature vectors(vectorised connectivity networks),
+    # pre - computed fMRI connectivity network feature matrix
     features = Reader.get_networks(subject_IDs, kind=connectivity, atlas_name=atlas)
 
-    #train/test
+    # train/test
     skf = StratifiedKFold(n_splits=10)
     cv_splits = list(skf.split(features, np.squeeze(y)))
 
     train_index = cv_splits[args.folds][0]
     test_index = cv_splits[args.folds][1]
 
-    def sample_mask(idx, l):
+    def sample_mask(idx, l):  # idx: index list of labeled samples; l: number of all samples
         """Create mask."""
         mask = np.zeros(l)
         mask[idx] = 1
         return np.array(mask, dtype=np.bool)
 
-
-
+    # Feature selection/dimension reduction steps
+    # Select a subset of the data if experimenting with a subset of the training set
     labeled_ind = Reader.site_percentage(train_index, params['num_training'], subject_IDs)
-
     features = Reader.feature_selection(features, y, labeled_ind, params['num_features'])
     print(f'features: {features}')
     print(f'features.shape: {features.shape}')
 
-
+    # Use Pearson correlation distance to measure the degree of linear correlation between two vectors distances
     distv = distance.pdist(features, metric='correlation')
 
-    dist = distance.squareform(distv)
+    dist = distance.squareform(distv) # Convert to square symmetric distance matrix
     sigma = np.mean(dist)
     adj = np.exp(-dist ** 2 / (2 * sigma ** 2))
     print(f'adj: {adj}')
     print(f'adj.shape: {adj.shape}')
 
+    # Convert the adjacency matrix form to COO form
     a = []
     b = []
     c = []
     for i in range(len(adj)):
         for j in range(len(adj)):
-            if adj[i][j] > x:
+            if adj[i][j] > hx:
                 a.append(i)
                 b.append(j)
                 c.append(adj[i][j])
@@ -131,87 +130,79 @@ def main():
     print(f'y: {y}')
     y = np.squeeze(y)
 
-
-
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
     data.num_classes = num_classes
-    data.train_mask = sample_mask(train_index, data.num_nodes)
-    data.test_mask = sample_mask(test_index, data.num_nodes)
+    data.train_mask = sample_mask(train_index, data.num_nodes)  # Get the training set mask
+    data.test_mask = sample_mask(test_index, data.num_nodes)  # Get the test set mask
 
-
+    # Convert edge_attr to matrix format
     print(f'edge_attr: {data.edge_attr}')
-    print(f'x: {data.x}')
+    print(f'x: {data.x}')  # features
     edge = []
-    edge_attr = data.edge_attr.tolist()
+    edge_attr = data.edge_attr.tolist()   # Convert tensor to list
     for i in range(data.num_edges):
         e = []
         e.append(edge_attr[i])
         edge.append(e)
-    edge = torch.tensor(edge, dtype=torch.float)
+    edge = torch.tensor(edge, dtype=torch.float)  # Convert matrix to tensor
     print(f'edge: {edge}')
 
-
-
-
-    print(f'Number of nodes: {data.num_nodes}')
-    print(f'Number of edges: {data.num_edges}')
-    print(f'y: {data.y}')
-    print(f'edge_index: {data.edge_index}') # edge_index
+    # Get some info about the graph
+    print(f'Number of nodes: {data.num_nodes}')  # number of nodes
+    print(f'Number of edges: {data.num_edges}')  # number of edges
+    print(f'y: {data.y}')  # y
+    print(f'edge_index: {data.edge_index}')  # edge_index
     print(f'edge_index[0]: {data.edge_index[0]}')
     print(f'labels: {labels}')  #
     print(f'data.num_classes: {data.num_classes}')
-    print(f'Number of node features: {data.num_node_features}')
-    print(f'Number of node features: {data.num_features}')
-    print(f'Number of edge features: {data.num_edge_features}')
-    print(f'Average node degree: {data.num_edges / data.num_nodes:.2f}')
-    print(
-        f'if edge indices are ordered and do not contain duplicate entries.: {data.is_coalesced()}')
-    print(f'Number of training nodes: {data.train_mask.sum()}')
-    print(f'Number of testing nodes: {data.test_mask.sum()}')  #test
-    print(f'Training node label rate: {int(data.train_mask.sum()) / data.num_nodes:.2f}')
-    print(f'Contains isolated nodes: {data.contains_isolated_nodes()}')
-    print(f'Contains self-loops: {data.contains_self_loops()}')
-    print(f'Is undirected: {data.is_undirected()}')
+    print(f'Number of node features: {data.num_node_features}')  # Dimension of node attributes
+    print(f'Number of node features: {data.num_features}')  # The same is the dimension of the node attribute
+    print(f'Number of edge features: {data.num_edge_features}')  # dimension of edge attributes
+    print(f'Average node degree: {data.num_edges / data.num_nodes:.2f}')  # Average node degree
+    print(f'if edge indices are ordered and do not contain duplicate entries.: {data.is_coalesced()}')  # Whether the edges are ordered and do not contain duplicate edges
+    print(f'Number of training nodes: {data.train_mask.sum()}')  # number of nodes to use as training set
+    print(f'Number of testing nodes: {data.test_mask.sum()}')  # test
+    print(f'Training node label rate: {int(data.train_mask.sum()) / data.num_nodes:.2f}')  # Proportion of nodes used as training set
+    print(f'Contains isolated nodes: {data.contains_isolated_nodes()}')  # Does this graph contain orphaned nodes
+    print(f'Contains self-loops: {data.contains_self_loops()}')  # Whether this graph contains self-loop edges
+    print(f'Is undirected: {data.is_undirected()}')  # Whether this graph is an undirected graph
 
     #my_net = GAT(num_node_features=data.num_node_features, hid_layer_size=layer_size, n_class=n_class, dropout_p=dropout_p)
     my_net = RGAT(in_c=data.num_node_features, hid_c=hid_c, out_c=n_class)
 
     #################################################################
+    # Upload data and models to the GPU
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # define device
+    my_net = my_net.to(device)  # Send the model to the GPU
+    data = data.to(device)   # Send data to GPU
+    edge = edge.to(device)  # Send edge to GPU
 
+    optimizer = torch.optim.Adam(my_net.parameters(), lr=lr)  # define optimizer
 
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    my_net = my_net.to(device)
-    data = data.to(device)
-    edge = edge.to(device)
-
-
-    optimizer = torch.optim.Adam(my_net.parameters(), lr=lr)
-
-
+    # model train
     my_net.train()
     for epoch in range(n_epoch):
-        optimizer.zero_grad()
+        optimizer.zero_grad()  # Set the gradient to 0 at each step, and do not let the gradient accumulate step by step
 
         output = my_net(data, edge)
-        loss = F.nll_loss(output[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
+        loss = F.nll_loss(output[data.train_mask], data.y[data.train_mask])  # Loss function (prediction result, target target result label)
+        loss.backward()   # backpropagation
+        optimizer.step()  # optimizer step
 
-        print("Epoch", epoch + 1, "Loss", loss.item())
+        print("Epoch", epoch + 1, "Loss", loss.item())  # Check the situation of each step to see if the loss is decreasing
 
+    # model test
     my_net.eval()
-    _, prediction = my_net(data, edge).max(dim=1)
+    _, prediction = my_net(data, edge).max(dim=1)  # Find the maximum value of softmax in the first dimension to see which category
 
-    targ = data.y
+    targ = data.y  # Get the target label to calculate the accuracy
     print(f'prediction[data.test_mask]p: {prediction[data.test_mask]}')
     print(f'targ[data.test_mask]: {targ[data.test_mask]}')
 
-    test_correct = prediction[data.test_mask].eq(targ[data.test_mask]).sum().item()
-    test_num = data.test_mask.sum().item()
+    test_correct = prediction[data.test_mask].eq(targ[data.test_mask]).sum().item()  # Each test is equal to the target, the results are accumulated.
+    test_num = data.test_mask.sum().item()  # number of test samples
 
-    print("Accuracy of Test Samples: ", test_correct / test_num)
+    print("Accuracy of Test Samples: ", test_correct / test_num)   # Calculate the accuracy
 
     y_test = targ[data.test_mask].data.cpu().numpy()
     y_pred = prediction[data.test_mask].data.cpu().numpy()
@@ -219,7 +210,7 @@ def main():
     print("AUC of Test Samples: ", auc_score)
 
     #######################################################
-
+    # Attention visualization
     num_nodes_of_interest = 2
     head_to_visualize = 0
 

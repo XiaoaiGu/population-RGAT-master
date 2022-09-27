@@ -12,9 +12,6 @@ class GAT(nn.Module):
             self.conv2 = pyg_nn.GATConv(in_channels=hid_c, out_channels=out_c)
 
         def forward(self, data):
-            # data.x data.edge_index
-            #x = data.x  # [N, C]
-            #edge_index = data.edge_index  # [2 ,E]
             hid = self.conv1(data.x, data.edge_index)  # [N, D]
             hid = F.relu(hid)
 
