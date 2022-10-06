@@ -24,7 +24,7 @@ pipeline = 'cpac'
 
 # Input data variables
 num_subjects = 871  # Number of subjects
-root_folder = 'D:\\xiaoai\\population-gat-master\\data'
+root_folder = 'D:\\..\\data'
 data_folder = os.path.join(root_folder, 'ABIDE_pcp\\cpac\\filt_noglobal')
 
 # Files to fetch

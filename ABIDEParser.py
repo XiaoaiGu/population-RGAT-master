@@ -28,7 +28,7 @@ from scipy.spatial import distance
 pipeline = 'cpac'
 
 # 输入数据变量
-root_folder = 'D:\\xiaoai\\population-gat-master\\data'
+root_folder = 'D:\\..\\data'
 data_folder = os.path.join(root_folder, 'ABIDE_pcp\\cpac\\filt_noglobal')
 phenotype = os.path.join(root_folder, 'ABIDE_pcp\\Phenotypic_V1_0b_preprocessed1.csv')
 
